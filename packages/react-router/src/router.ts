@@ -125,6 +125,7 @@ export interface RouterOptions<
   Wrap?: (props: { children: any }) => JSX.Element
   InnerWrap?: (props: { children: any }) => JSX.Element
   notFoundRoute?: AnyRoute
+  globalNotFound?: RouteComponent
 }
 
 export interface RouterState<TRouteTree extends AnyRoute = AnyRoute> {
@@ -1060,9 +1061,10 @@ export class Router<
 
           const pendingMs =
             route.options.pendingMs ?? this.options.defaultPendingMs
-          const pendingPromise = typeof pendingMs === 'number' && pendingMs <= 0
-            ? Promise.resolve()
-            : new Promise<void>((r) => setTimeout(r, pendingMs))
+          const pendingPromise =
+            typeof pendingMs === 'number' && pendingMs <= 0
+              ? Promise.resolve()
+              : new Promise<void>((r) => setTimeout(r, pendingMs))
 
           const beforeLoadContext =
             (await route.options.beforeLoad?.({

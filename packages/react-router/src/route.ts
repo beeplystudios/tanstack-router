@@ -18,6 +18,7 @@ import {
   UnionToIntersection,
 } from './utils'
 import { BuildLocationFn, NavigateFn } from './RouterProvider'
+import warning from 'tiny-warning'
 
 export const rootRouteId = '__root__' as const
 export type RootRouteId = typeof rootRouteId
@@ -187,6 +188,7 @@ export type UpdatableRouteOptions<
   // The content to be rendered when the route is matched. If no component is provided, defaults to `<Outlet />`
   component?: RouteComponent
   errorComponent?: false | null | ErrorRouteComponent
+  notFoundComponent?: NotFoundRouteComponent
   pendingComponent?: RouteComponent
   pendingMs?: number
   pendingMinMs?: number
@@ -1033,6 +1035,10 @@ export type ErrorRouteProps = {
   error: unknown
   info: { componentStack: string }
 }
+
+export type NotFoundRouteProps = {
+  userData: unknown
+}
 //
 
 export type ReactNode = any
@@ -1049,6 +1055,8 @@ export type RouteComponent<TProps = any> = SyncRouteComponent<TProps> &
   AsyncRouteComponent<TProps>
 
 export type ErrorRouteComponent = RouteComponent<ErrorRouteProps>
+
+export type NotFoundRouteComponent = SyncRouteComponent<NotFoundRouteProps>
 
 export class NotFoundRoute<
   TParentRoute extends AnyRootRoute,
@@ -1122,6 +1130,8 @@ export class NotFoundRoute<
       'caseSensitive' | 'parseParams' | 'stringifyParams' | 'path' | 'id'
     >,
   ) {
+    // TODO:
+    // warning(false, "NotFoundRoute is being deprecated and will be removed in the next major version. Please use [TODO] instead.")
     super({
       ...(options as any),
       id: '404',

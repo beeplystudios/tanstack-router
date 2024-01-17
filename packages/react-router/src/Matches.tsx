@@ -4,7 +4,7 @@ import warning from 'tiny-warning'
 import { CatchBoundary, ErrorComponent } from './CatchBoundary'
 import { useRouter, useRouterState } from './RouterProvider'
 import { ResolveRelativePath, ToOptions } from './link'
-import { AnyRoute, ReactNode, rootRouteId } from './route'
+import { AnyRoute, ReactNode, RootRoute, rootRouteId } from './route'
 import {
   FullSearchSchema,
   ParseRoute,
@@ -15,6 +15,7 @@ import {
 } from './routeInfo'
 import { RegisteredRouter, RouterState } from './router'
 import { NoInfer, StrictOrFrom, pick } from './utils'
+import { CatchNotFound, isNotFound } from './not-found'
 
 export const matchContext = React.createContext<string | undefined>(undefined)
 
@@ -104,6 +105,12 @@ export function Match({ matchId }: { matchId: string }) {
     router.options.defaultErrorComponent ??
     ErrorComponent
 
+  const routeNotFoundComponent = route.isRoot
+    ? // If it's the root route, use the globalNotFound option, with fallback to the notFoundRoute
+      router.options.globalNotFound ??
+      router.options.notFoundRoute?.options.component
+    : route.options.notFoundComponent
+
   const ResolvedSuspenseBoundary =
     route.options.wrapInSuspense ??
     PendingComponent ??
@@ -117,17 +124,34 @@ export function Match({ matchId }: { matchId: string }) {
     ? CatchBoundary
     : SafeFragment
 
+  const ResolvedNotFoundBoundary = routeNotFoundComponent
+    ? CatchNotFound
+    : SafeFragment
+
   return (
     <matchContext.Provider value={matchId}>
       <ResolvedSuspenseBoundary fallback={pendingElement}>
         <ResolvedCatchBoundary
           getResetKey={() => router.state.resolvedLocation.state?.key}
           errorComponent={routeErrorComponent}
-          onCatch={() => {
+          onCatch={(error) => {
+            // If the error is a not found error, we want to forward it up to the nearest not found boundary
+            if (isNotFound(error)) throw error
             warning(false, `Error in route match: ${matchId}`)
           }}
         >
-          <MatchInner matchId={matchId!} pendingElement={pendingElement} />
+          <ResolvedNotFoundBoundary
+            // TODO: type this
+            fallback={(error: any) => {
+              if (!routeNotFoundComponent) throw error
+
+              return React.createElement(routeNotFoundComponent, {
+                userData: error.userData,
+              })
+            }}
+          >
+            <MatchInner matchId={matchId!} pendingElement={pendingElement} />
+          </ResolvedNotFoundBoundary>
         </ResolvedCatchBoundary>
       </ResolvedSuspenseBoundary>
     </matchContext.Provider>
