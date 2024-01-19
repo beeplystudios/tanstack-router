@@ -1037,7 +1037,7 @@ export type ErrorRouteProps = {
 }
 
 export type NotFoundRouteProps = {
-  userData: unknown
+  data: unknown
 }
 //
 
@@ -1130,8 +1130,6 @@ export class NotFoundRoute<
       'caseSensitive' | 'parseParams' | 'stringifyParams' | 'path' | 'id'
     >,
   ) {
-    // TODO:
-    // warning(false, "NotFoundRoute is being deprecated and will be removed in the next major version. Please use [TODO] instead.")
     super({
       ...(options as any),
       id: '404',

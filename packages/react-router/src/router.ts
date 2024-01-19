@@ -59,6 +59,7 @@ import {
 import invariant from 'tiny-invariant'
 import { isRedirect } from './redirects'
 import { ToOptions } from './link'
+import { notFound, warning } from '.'
 // import warning from 'tiny-warning'
 
 //
@@ -125,7 +126,6 @@ export interface RouterOptions<
   Wrap?: (props: { children: any }) => JSX.Element
   InnerWrap?: (props: { children: any }) => JSX.Element
   notFoundRoute?: AnyRoute
-  globalNotFound?: RouteComponent
 }
 
 export interface RouterState<TRouteTree extends AnyRoute = AnyRoute> {
@@ -212,6 +212,8 @@ export type RouterListener<TRouterEvent extends RouterEvent> = {
   fn: ListenerFn<TRouterEvent>
 }
 
+export const throwNotFoundRouteId = '/__throwNotFound__' as const
+
 export class Router<
   TRouteTree extends AnyRoute = AnyRoute,
   TDehydrated extends Record<string, any> = Record<string, any>,
@@ -242,6 +244,31 @@ export class Router<
   flatRoutes!: AnyRoute[]
 
   constructor(options: RouterConstructorOptions<TRouteTree, TDehydrated>) {
+    // If the user hasn't specified a notFoundRoute, create one that throws a notFoundError
+    // for them. This is to remain backwards compatible when adding the new `notFoundComponent` API
+    if (!options.notFoundRoute && options.routeTree) {
+      options.routeTree.addChildren([
+        ...options.routeTree.children,
+        new Route({
+          id: throwNotFoundRouteId,
+          getParentRoute: () => {
+            invariant(
+              options.routeTree,
+              "Can't find a __root__ route to attach throwNotFound route to",
+            )
+            return options.routeTree
+          },
+        }),
+      ])
+    }
+
+    if (options.notFoundRoute) {
+      warning(
+        false,
+        'The notFoundRoute API is being deprecated and will be removed in the next major version in favor of [TODO]. See ..',
+      )
+    }
+
     this.update({
       defaultPreloadDelay: 50,
       defaultPendingMs: 1000,
@@ -537,14 +564,19 @@ export class Router<
     // Check to see if the route needs a 404 entry
     if (
       // If we found a route, and it's not an index route and we have left over path
-      (foundRoute
+      foundRoute
         ? foundRoute.path !== '/' && routeParams['**']
         : // Or if we didn't find a route and we have left over path
-          trimPathRight(pathname)) &&
-      // And we have a 404 route configured
-      this.options.notFoundRoute
+          trimPathRight(pathname)
     ) {
-      matchedRoutes.push(this.options.notFoundRoute)
+      // TODO: Deprecate notFoundRoute in favor of notFoundComponent in route __root__
+      // If the user has defined a 404 route, use it
+      if (this.options.notFoundRoute) {
+        matchedRoutes.push(this.options.notFoundRoute)
+      } else {
+        // If there is no routes found during path matching
+        matchedRoutes.push((this.routesById as any)[throwNotFoundRouteId])
+      }
     }
 
     while (routeCursor?.parentRoute) {
