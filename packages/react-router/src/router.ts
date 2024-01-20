@@ -212,7 +212,7 @@ export type RouterListener<TRouterEvent extends RouterEvent> = {
   fn: ListenerFn<TRouterEvent>
 }
 
-export const throwNotFoundRouteId = '/__throwNotFound__' as const
+export const throwGlobalNotFoundRouteId = '/__throwGlobalNotFound__' as const
 
 export class Router<
   TRouteTree extends AnyRoute = AnyRoute,
@@ -244,24 +244,6 @@ export class Router<
   flatRoutes!: AnyRoute[]
 
   constructor(options: RouterConstructorOptions<TRouteTree, TDehydrated>) {
-    // If the user hasn't specified a notFoundRoute, create one that throws a notFoundError
-    // for them. This is to remain backwards compatible when adding the new `notFoundComponent` API
-    if (!options.notFoundRoute && options.routeTree) {
-      options.routeTree.addChildren([
-        ...options.routeTree.children,
-        new Route({
-          id: throwNotFoundRouteId,
-          getParentRoute: () => {
-            invariant(
-              options.routeTree,
-              "Can't find a __root__ route to attach throwNotFound route to",
-            )
-            return options.routeTree
-          },
-        }),
-      ])
-    }
-
     if (options.notFoundRoute) {
       warning(
         false,
@@ -290,6 +272,29 @@ export class Router<
     this.options = {
       ...this.options,
       ...newOptions,
+    }
+
+    // If the user hasn't specified a notFoundRoute, create one that throws a notFoundError
+    // for them. This is to remain backwards compatible when adding the new `notFoundComponent` API
+    if (
+      !this.options.notFoundRoute &&
+      this.options.routeTree &&
+      // Make sure the throwGlobalNotFoundRouteId doesn't already exist
+      !(this.routesById && (this.routesById as any)[throwGlobalNotFoundRouteId])
+    ) {
+      this.options.routeTree.addChildren([
+        ...this.options.routeTree.children,
+        new Route({
+          id: throwGlobalNotFoundRouteId,
+          getParentRoute: () => {
+            invariant(
+              this.routeTree,
+              "Can't find a __root__ route to attach a throwGlobalNotFound route to",
+            )
+            return this.routeTree
+          },
+        }),
+      ])
     }
 
     if (
@@ -575,7 +580,7 @@ export class Router<
         matchedRoutes.push(this.options.notFoundRoute)
       } else {
         // If there is no routes found during path matching
-        matchedRoutes.push((this.routesById as any)[throwNotFoundRouteId])
+        matchedRoutes.push((this.routesById as any)[throwGlobalNotFoundRouteId])
       }
     }
 
