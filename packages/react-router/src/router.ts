@@ -212,7 +212,7 @@ export type RouterListener<TRouterEvent extends RouterEvent> = {
   fn: ListenerFn<TRouterEvent>
 }
 
-export const throwGlobalNotFoundRouteId = '/__throwGlobalNotFound__' as const
+export const throwGlobalNotFoundRouteId = '/__throwGlobalNotFound__/' as const
 
 export class Router<
   TRouteTree extends AnyRoute = AnyRoute,
@@ -280,7 +280,9 @@ export class Router<
       !this.options.notFoundRoute &&
       this.options.routeTree &&
       // Make sure the throwGlobalNotFoundRouteId doesn't already exist
-      !(this.routesById && (this.routesById as any)[throwGlobalNotFoundRouteId])
+      !(this.options.routeTree.children as Route[]).some(
+        (r) => r.id === throwGlobalNotFoundRouteId,
+      )
     ) {
       this.options.routeTree.addChildren([
         ...this.options.routeTree.children,
