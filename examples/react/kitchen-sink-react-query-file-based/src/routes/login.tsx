@@ -2,7 +2,7 @@ import * as React from 'react'
 import { FileRoute, useRouter } from '@tanstack/react-router'
 import { z } from 'zod'
 
-export const Route = new FileRoute("/login")
+export const Route = new FileRoute('/login')
   .createRoute({
     validateSearch: z.object({
       redirect: z.string().optional(),
@@ -14,7 +14,9 @@ export const Route = new FileRoute("/login")
 
 function LoginComponent() {
   const router = useRouter()
-  const { auth } = Route.useRouteContext()
+  const { auth, status } = Route.useRouteContext({
+    select: ({ auth }) => ({ auth, status: auth.status }),
+  })
   const search = Route.useSearch()
   const [username, setUsername] = React.useState('')
 
@@ -26,12 +28,12 @@ function LoginComponent() {
 
   // Ah, the subtle nuances of client side auth. 🙄
   React.useLayoutEffect(() => {
-    if (auth.status === 'loggedIn' && search.redirect) {
+    if (status === 'loggedIn' && search.redirect) {
       router.history.push(search.redirect)
     }
-  }, [auth.status, search.redirect])
+  }, [status, search.redirect])
 
-  return auth.status === 'loggedIn' ? (
+  return status === 'loggedIn' ? (
     <div>
       Logged in as <strong>{auth.username}</strong>
       <div className="h-2" />

@@ -1,9 +1,4 @@
 import * as React from 'react'
-import { useMatch } from './Matches'
-import { RouteMatch } from './Matches'
-import { AnyRoute } from './route'
-import { RouteIds, RouteById } from './routeInfo'
-import { RegisteredRouter } from './router'
 
 export type NoInfer<T> = [T][T extends any ? 0 : never]
 export type IsAny<T, Y, N = T> = 1 extends 0 & T ? Y : N
@@ -29,6 +24,15 @@ export type UnionToIntersection<U> = (
 ) extends (k: infer I) => any
   ? I
   : never
+
+export type DeepOptional<T, K extends keyof T> = Pick<DeepPartial<T>, K> &
+  Omit<T, K>
+
+export type DeepPartial<T> = T extends object
+  ? {
+      [P in keyof T]?: DeepPartial<T[P]>
+    }
+  : T
 
 // type Compute<T> = { [K in keyof T]: T[K] } | never
 
@@ -290,35 +294,21 @@ export function shallow<T>(objA: T, objB: T) {
   return true
 }
 
+export type StringLiteral<T> = T extends string
+  ? string extends T
+    ? string
+    : T
+  : never
+
 export type StrictOrFrom<TFrom> =
   | {
-      from: TFrom
+      from: StringLiteral<TFrom> | TFrom
       strict?: true
     }
   | {
       from?: never
       strict: false
     }
-
-export function useRouteContext<
-  TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TFrom extends RouteIds<TRouteTree> = RouteIds<TRouteTree>,
-  TStrict extends boolean = true,
-  TRouteContext = RouteById<TRouteTree, TFrom>['types']['allContext'],
-  TSelected = TRouteContext,
->(
-  opts: StrictOrFrom<TFrom> & {
-    select?: (search: TRouteContext) => TSelected
-  },
-): TStrict extends true ? TSelected : TSelected | undefined {
-  return useMatch({
-    ...(opts as any),
-    select: (match: RouteMatch) =>
-      opts?.select
-        ? opts.select(match.context as TRouteContext)
-        : match.context,
-  })
-}
 
 export const useLayoutEffect =
   typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect

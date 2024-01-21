@@ -5,7 +5,7 @@ import {
   createBrowserHistory,
   createMemoryHistory,
 } from '@tanstack/history'
-import { Store } from '@tanstack/store'
+import { Store } from '@tanstack/react-store'
 
 //
 
@@ -19,7 +19,13 @@ import {
   LoaderFnContext,
   rootRouteId,
 } from './route'
-import { FullSearchSchema, RoutesById, RoutesByPath } from './routeInfo'
+import {
+  FullSearchSchema,
+  RouteById,
+  RoutePaths,
+  RoutesById,
+  RoutesByPath,
+} from './routeInfo'
 import { defaultParseSearch, defaultStringifySearch } from './searchParams'
 import {
   PickAsRequired,
@@ -34,14 +40,13 @@ import {
   Timeout,
 } from './utils'
 import { RouteComponent } from './route'
-import { AnyRouteMatch, RouteMatch } from './Matches'
+import { AnyRouteMatch, MatchRouteOptions, RouteMatch } from './Matches'
 import { ParsedLocation } from './location'
 import { SearchSerializer, SearchParser } from './searchParams'
 import {
   BuildLocationFn,
   CommitLocationOptions,
   InjectedHtmlEntry,
-  MatchRouteFn,
   NavigateFn,
   getRouteMatch,
 } from './RouterProvider'
@@ -59,8 +64,9 @@ import {
 } from './path'
 import invariant from 'tiny-invariant'
 import { isRedirect } from './redirects'
-import { ToOptions } from './link'
-import { DefaultGlobalNotFound, notFound, warning } from '.'
+import { DefaultGlobalNotFound, warning } from '.'
+import { ResolveRelativePath, ToOptions } from './link'
+import { NoInfer } from '@tanstack/react-store'
 // import warning from 'tiny-warning'
 
 //
@@ -101,6 +107,7 @@ export type RouterContextOptions<TRouteTree extends AnyRoute> =
 export interface RouterOptions<
   TRouteTree extends AnyRoute,
   TDehydrated extends Record<string, any> = Record<string, any>,
+  TSerializedError extends Record<string, any> = Record<string, any>,
 > {
   history?: RouterHistory
   stringifySearch?: SearchSerializer
@@ -127,6 +134,11 @@ export interface RouterOptions<
   Wrap?: (props: { children: any }) => JSX.Element
   InnerWrap?: (props: { children: any }) => JSX.Element
   notFoundRoute?: AnyRoute
+  errorSerializer?: RouterErrorSerializer<TSerializedError>
+}
+export interface RouterErrorSerializer<TSerializedError> {
+  serialize: (err: unknown) => TSerializedError
+  deserialize: (err: TSerializedError) => unknown
 }
 
 export interface RouterState<TRouteTree extends AnyRoute = AnyRoute> {
@@ -176,7 +188,8 @@ export interface DehydratedRouter {
 export type RouterConstructorOptions<
   TRouteTree extends AnyRoute,
   TDehydrated extends Record<string, any>,
-> = Omit<RouterOptions<TRouteTree, TDehydrated>, 'context'> &
+  TSerializedError extends Record<string, any>,
+> = Omit<RouterOptions<TRouteTree, TDehydrated, TSerializedError>, 'context'> &
   RouterContextOptions<TRouteTree>
 
 export const componentTypes = [
@@ -218,6 +231,7 @@ export const throwGlobalNotFoundRouteId = '/__throwGlobalNotFound__/' as const
 export class Router<
   TRouteTree extends AnyRoute = AnyRoute,
   TDehydrated extends Record<string, any> = Record<string, any>,
+  TSerializedError extends Record<string, any> = Record<string, any>,
 > {
   // Option-independent properties
   tempLocationKey: string | undefined = `${Math.round(
@@ -233,7 +247,7 @@ export class Router<
   // Must build in constructor
   __store!: Store<RouterState<TRouteTree>>
   options!: PickAsRequired<
-    RouterOptions<TRouteTree, TDehydrated>,
+    RouterOptions<TRouteTree, TDehydrated, TSerializedError>,
     'stringifySearch' | 'parseSearch' | 'context'
   >
   history!: RouterHistory
@@ -244,14 +258,19 @@ export class Router<
   routesByPath!: RoutesByPath<TRouteTree>
   flatRoutes!: AnyRoute[]
 
-  constructor(options: RouterConstructorOptions<TRouteTree, TDehydrated>) {
+  constructor(
+    options: RouterConstructorOptions<
+      TRouteTree,
+      TDehydrated,
+      TSerializedError
+    >,
+  ) {
     if (options.notFoundRoute) {
       warning(
         false,
         'The notFoundRoute API is being deprecated and will be removed in the next major version in favor of [TODO]. See ..',
       )
     }
-
     this.update({
       defaultPreloadDelay: 50,
       defaultPendingMs: 1000,
@@ -268,7 +287,13 @@ export class Router<
   // router can be used in a non-react environment if necessary
   startReactTransition: (fn: () => void) => void = (fn) => fn()
 
-  update = (newOptions: RouterConstructorOptions<TRouteTree, TDehydrated>) => {
+  update = (
+    newOptions: RouterConstructorOptions<
+      TRouteTree,
+      TDehydrated,
+      TSerializedError
+    >,
+  ) => {
     const previousOptions = this.options
     this.options = {
       ...this.options,
@@ -304,7 +329,15 @@ export class Router<
       !this.basepath ||
       (newOptions.basepath && newOptions.basepath !== previousOptions.basepath)
     ) {
-      this.basepath = `/${trimPath(newOptions.basepath ?? '') ?? ''}`
+      if (
+        newOptions.basepath === undefined ||
+        newOptions.basepath === '' ||
+        newOptions.basepath === '/'
+      ) {
+        this.basepath = '/'
+      } else {
+        this.basepath = `/${trimPath(newOptions.basepath)}`
+      }
     }
 
     if (
@@ -675,9 +708,16 @@ export class Router<
 
       const loaderDepsHash = loaderDeps ? JSON.stringify(loaderDeps) : ''
 
-      const interpolatedPath = interpolatePath(route.fullPath, routeParams)
+      const interpolatedPath = interpolatePath({
+        path: route.fullPath,
+        params: routeParams,
+      })
       const matchId =
-        interpolatePath(route.id, routeParams, true) + loaderDepsHash
+        interpolatePath({
+          path: route.id,
+          params: routeParams,
+          leaveWildcards: true,
+        }) + loaderDepsHash
 
       // Waste not, want not. If we already have a match for this route,
       // reuse it. This is important for layout routes, which might stick
@@ -749,13 +789,20 @@ export class Router<
       } = {},
       matches?: AnyRouteMatch[],
     ): ParsedLocation => {
-      const from = this.latestLocation
+      const relevantMatches = this.state.pendingMatches || this.state.matches
       const fromSearch =
-        (this.state.pendingMatches || this.state.matches).reverse()[0]
-          ?.search || from.search
-      let pathname = this.resolvePathWithBase(from.pathname, `${dest.to ?? ''}`)
+        relevantMatches[relevantMatches.length - 1]?.search ||
+        this.latestLocation.search
 
-      const fromMatches = this.matchRoutes(from.pathname, fromSearch)
+      let pathname = this.resolvePathWithBase(
+        dest.from ?? this.latestLocation.pathname,
+        `${dest.to ?? ''}`,
+      )
+
+      const fromMatches = this.matchRoutes(
+        this.latestLocation.pathname,
+        fromSearch,
+      )
       const stayingMatches = matches?.filter(
         (d) => fromMatches?.find((e) => e.routeId === d.routeId),
       )
@@ -776,7 +823,12 @@ export class Router<
           })
       }
 
-      pathname = interpolatePath(pathname, nextParams ?? {})
+      pathname = interpolatePath({
+        path: pathname,
+        params: nextParams ?? {},
+        leaveWildcards: false,
+        leaveParams: opts.leaveParams,
+      })
 
       const preSearchFilters =
         stayingMatches
@@ -827,21 +879,21 @@ export class Router<
 
       const hash =
         dest.hash === true
-          ? from.hash
+          ? this.latestLocation.hash
           : dest.hash
-            ? functionalUpdate(dest.hash!, from.hash)
+            ? functionalUpdate(dest.hash!, this.latestLocation.hash)
             : undefined
 
       const hashStr = hash ? `#${hash}` : ''
 
       let nextState =
         dest.state === true
-          ? from.state
+          ? this.latestLocation.state
           : dest.state
-            ? functionalUpdate(dest.state, from.state)
-            : from.state
+            ? functionalUpdate(dest.state, this.latestLocation.state)
+            : this.latestLocation.state
 
-      nextState = replaceEqualDeep(from.state, nextState)
+      nextState = replaceEqualDeep(this.latestLocation.state, nextState)
 
       return {
         pathname,
@@ -1552,15 +1604,23 @@ export class Router<
     return matches
   }
 
-  matchRoute: MatchRouteFn<TRouteTree> = (location, opts) => {
-    location = {
+  matchRoute = <
+    TFrom extends RoutePaths<TRouteTree> = '/',
+    TTo extends string = '',
+    TResolved = ResolveRelativePath<TFrom, NoInfer<TTo>>,
+  >(
+    location: ToOptions<TRouteTree, TFrom, TTo>,
+    opts?: MatchRouteOptions,
+  ): false | RouteById<TRouteTree, TResolved>['types']['allParams'] => {
+    const matchLocation = {
       ...location,
       to: location.to
         ? this.resolvePathWithBase((location.from || '') as string, location.to)
         : undefined,
-    } as any
-
-    const next = this.buildLocation(location as any)
+      params: location.params || {},
+      leaveParams: true,
+    }
+    const next = this.buildLocation(matchLocation as any)
 
     if (opts?.pending && this.state.status !== 'pending') {
       return false
@@ -1573,7 +1633,6 @@ export class Router<
     if (!baseLocation) {
       return false
     }
-
     const match = matchPathname(this.basepath, baseLocation.pathname, {
       ...opts,
       to: next.pathname,
@@ -1581,6 +1640,11 @@ export class Router<
 
     if (!match) {
       return false
+    }
+    if (location.params) {
+      if (!deepEqual(match, location.params, true)) {
+        return false
+      }
     }
 
     if (match && (opts?.includeSearch ?? true)) {
@@ -1629,11 +1693,22 @@ export class Router<
   }
 
   dehydrate = (): DehydratedRouter => {
+    const pickError =
+      this.options.errorSerializer?.serialize ?? defaultSerializeError
+
     return {
       state: {
-        dehydratedMatches: this.state.matches.map((d) =>
-          pick(d, ['id', 'status', 'updatedAt', 'loaderData']),
-        ),
+        dehydratedMatches: this.state.matches.map((d) => ({
+          ...pick(d, ['id', 'status', 'updatedAt', 'loaderData']),
+          // If an error occurs server-side during SSRing,
+          // send a small subset of the error to the client
+          error: d.error
+            ? {
+                data: pickError(d.error),
+                __isServerError: true,
+              }
+            : undefined,
+        })),
       },
     }
   }
@@ -1734,5 +1809,17 @@ export function getInitialRouterState(
     pendingMatches: [],
     cachedMatches: [],
     lastUpdated: Date.now(),
+  }
+}
+
+export function defaultSerializeError(err: unknown) {
+  if (err instanceof Error)
+    return {
+      name: err.name,
+      message: err.message,
+    }
+
+  return {
+    data: err,
   }
 }

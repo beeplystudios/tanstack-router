@@ -1,13 +1,10 @@
 import * as React from 'react'
 import { useMatch } from './Matches'
-import { useRouter, useRouterState } from './RouterProvider'
+import { useRouterState } from './useRouterState'
+import { useRouter } from './useRouter'
 import { Trim } from './fileRoute'
 import { AnyRoute, ReactNode, RootSearchSchema } from './route'
-import {
-  RouteByPath,
-  RouteIds,
-  RoutePaths,
-} from './routeInfo'
+import { RouteByPath, RouteIds, RoutePaths } from './routeInfo'
 import { RegisteredRouter } from './router'
 import { LinkProps, UseLinkPropsOptions } from './useNavigate'
 import {
@@ -15,6 +12,7 @@ import {
   NoInfer,
   NonNullableUpdater,
   PickRequired,
+  StringLiteral,
   Updater,
   WithoutEmpty,
   deepEqual,
@@ -53,7 +51,11 @@ export type Split<S, TIncludeTrailingSlash = true> = S extends unknown
   : never
 
 export type ParsePathParams<T extends string> = keyof {
-  [K in Trim<Split<T>[number], '_'> as K extends `$${infer L}` ? L : never]: K
+  [K in Trim<Split<T>[number], '_'> as K extends `$${infer L}`
+    ? L extends ''
+      ? '_splat'
+      : L
+    : never]: K
 }
 
 export type Join<T, Delimiter extends string = '/'> = T extends []
@@ -114,7 +116,7 @@ export type RelativeToPathAutoComplete<
 
 export type NavigateOptions<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TFrom extends RoutePaths<TRouteTree> | string = RoutePaths<TRouteTree>,
   TTo extends string = '',
   TMaskFrom extends RoutePaths<TRouteTree> | string = TFrom,
   TMaskTo extends string = '',
@@ -128,7 +130,7 @@ export type NavigateOptions<
 
 export type ToOptions<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TFrom extends RoutePaths<TRouteTree> | string = RoutePaths<TRouteTree>,
   TTo extends string = '',
   TMaskFrom extends RoutePaths<TRouteTree> | string = TFrom,
   TMaskTo extends string = '',
@@ -138,7 +140,7 @@ export type ToOptions<
 
 export type ToMaskOptions<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TMaskFrom extends RoutePaths<TRouteTree> | string = string,
+  TMaskFrom extends RoutePaths<TRouteTree> | string = RoutePaths<TRouteTree>,
   TMaskTo extends string = '',
 > = ToSubOptions<TRouteTree, TMaskFrom, TMaskTo> & {
   unmaskOnReload?: boolean
@@ -146,7 +148,7 @@ export type ToMaskOptions<
 
 export type ToSubOptions<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TFrom extends RoutePaths<TRouteTree> | string = string,
+  TFrom extends RoutePaths<TRouteTree> | string = RoutePaths<TRouteTree>,
   TTo extends string = '',
   TResolved = ResolveRelativePath<TFrom, NoInfer<TTo>>,
 > = {
@@ -156,7 +158,7 @@ export type ToSubOptions<
   // State to pass to the history stack
   state?: true | NonNullableUpdater<HistoryState>
   // The source route path. This is automatically set when using route-level APIs, but for type-safe relative routing on the router itself, this is required
-  from?: TFrom
+  from?: StringLiteral<TFrom>
   // // When using relative route paths, this option forces resolution from the current path, instead of the route API's path or `from` path
 } & CheckPath<TRouteTree, NoInfer<TResolved>, {}> &
   SearchParamOptions<TRouteTree, TFrom, TTo, TResolved> &
@@ -165,6 +167,17 @@ export type ToSubOptions<
 type ParamsReducer<TFrom, TTo> = TTo | ((current: TFrom) => TTo)
 
 type ParamVariant = 'PATH' | 'SEARCH'
+type ExcludeRootSearchSchema<T, Excluded = Exclude<T, RootSearchSchema>> = [
+  Excluded,
+] extends [never]
+  ? {}
+  : Excluded
+
+type PostProcessParams<
+  T,
+  TParamVariant extends ParamVariant,
+> = TParamVariant extends 'SEARCH' ? ExcludeRootSearchSchema<T> : T
+
 export type ParamOptions<
   TRouteTree extends AnyRoute,
   TFrom,
@@ -181,27 +194,25 @@ export type ParamOptions<
     | 'fullSearchSchemaInput' = TParamVariant extends 'PATH'
     ? 'allParams'
     : 'fullSearchSchemaInput',
-  TFromParams = Expand<
-    Exclude<
-      RouteByPath<TRouteTree, TFrom>['types'][TFromRouteType],
-      RootSearchSchema
-    >
+  TFromParams = PostProcessParams<
+    RouteByPath<TRouteTree, TFrom>['types'][TFromRouteType],
+    TParamVariant
   >,
-  TToIndex = TTo extends '' ? '' : RouteByPath<TRouteTree, `${TTo}/`> extends never ? TTo : `${TTo}/`,
+  TToIndex = TTo extends ''
+    ? ''
+    : RouteByPath<TRouteTree, `${TTo}/`> extends never
+      ? TTo
+      : `${TTo}/`,
   TToParams = TToIndex extends ''
     ? TFromParams
     : never extends TResolved
-      ? Expand<
-          Exclude<
-            RouteByPath<TRouteTree, TToIndex>['types'][TToRouteType],
-            RootSearchSchema
-          >
+      ? PostProcessParams<
+          RouteByPath<TRouteTree, TToIndex>['types'][TToRouteType],
+          TParamVariant
         >
-      : Expand<
-          Exclude<
-            RouteByPath<TRouteTree, TResolved>['types'][TToRouteType],
-            RootSearchSchema
-          >
+      : PostProcessParams<
+          RouteByPath<TRouteTree, TResolved>['types'][TToRouteType],
+          TParamVariant
         >,
   TReducer = ParamsReducer<TFromParams, TToParams>,
 > = Expand<WithoutEmpty<PickRequired<TToParams>>> extends never

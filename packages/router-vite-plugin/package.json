@@ -1,16 +1,42 @@
 {
   "name": "@tanstack/router-vite-plugin",
-  "author": "Tanner Linsley",
-  "version": "1.4.6",
-  "license": "MIT",
-  "repository": "tanstack/router",
-  "homepage": "https://tanstack.com/router",
+  "version": "1.8.2",
   "description": "",
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+  "author": "Tanner Linsley",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TanStack/router.git",
+    "directory": "packages/router-vite-plugin"
   },
+  "homepage": "https://tanstack.com/router",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/tannerlinsley"
+  },
+  "type": "module",
+  "types": "dist/esm/index.d.ts",
+  "main": "dist/cjs/index.cjs",
+  "module": "dist/esm/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
   "scripts": {
-    "build": "rollup --config rollup.config.js"
+    "clean": "rimraf ./dist && rimraf ./coverage",
+    "test:types": "tsc",
+    "test:build": "publint --strict",
+    "build": "vite build"
   },
   "keywords": [
     "react",
@@ -21,24 +47,14 @@
     "async router",
     "typescript"
   ],
-  "funding": {
-    "type": "github",
-    "url": "https://github.com/sponsors/tannerlinsley"
-  },
   "engines": {
     "node": ">=12"
   },
   "files": [
-    "build/**",
+    "dist",
     "src/**"
   ],
-  "sideEffects": false,
-  "module": "build/esm/index.js",
-  "main": "build/cjs/packages/router-vite-plugin/src/index.js",
-  "browser": "build/cjs/packages/router-vite-plugin/src/index.js",
-  "types": "build/types/index.d.ts",
   "dependencies": {
-    "@tanstack/react-router": "workspace:*",
-    "@tanstack/router-cli": "workspace:*"
+    "@tanstack/router-generator": "workspace:*"
   }
 }

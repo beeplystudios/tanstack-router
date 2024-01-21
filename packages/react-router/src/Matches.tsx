@@ -2,11 +2,11 @@ import * as React from 'react'
 import invariant from 'tiny-invariant'
 import warning from 'tiny-warning'
 import { CatchBoundary, ErrorComponent } from './CatchBoundary'
-import { useRouter, useRouterState } from './RouterProvider'
+import { useRouterState } from './useRouterState'
+import { useRouter } from './useRouter'
 import { ResolveRelativePath, ToOptions } from './link'
-import { AnyRoute, ReactNode, RootRoute, rootRouteId } from './route'
+import { AnyRoute, ReactNode, rootRouteId, RootSearchSchema } from './route'
 import {
-  FullSearchSchema,
   ParseRoute,
   RouteById,
   RouteByPath,
@@ -18,7 +18,7 @@ import {
   RouterState,
   throwGlobalNotFoundRouteId,
 } from './router'
-import { NoInfer, StrictOrFrom, pick } from './utils'
+import { NoInfer, StrictOrFrom, pick, DeepOptional } from './utils'
 import {
   CatchNotFound,
   DefaultGlobalNotFound,
@@ -47,8 +47,10 @@ export interface RouteMatch<
   loaderData?: RouteById<TRouteTree, TRouteId>['types']['loaderData']
   routeContext: RouteById<TRouteTree, TRouteId>['types']['routeContext']
   context: RouteById<TRouteTree, TRouteId>['types']['allContext']
-  search: FullSearchSchema<TRouteTree> &
-    RouteById<TRouteTree, TRouteId>['types']['fullSearchSchema']
+  search: Exclude<
+    RouteById<TRouteTree, TRouteId>['types']['fullSearchSchema'],
+    RootSearchSchema
+  >
   fetchCount: number
   abortController: AbortController
   cause: 'preload' | 'enter' | 'stay'
@@ -204,7 +206,13 @@ function MatchInner({
   }
 
   if (match.status === 'error') {
-    throw match.error
+    if (isServerSideError(match.error)) {
+      const deserializeError =
+        router.options.errorSerializer?.deserialize ?? defaultDeserializeError
+      throw deserializeError(match.error.data)
+    } else {
+      throw match.error
+    }
   }
 
   if (match.status === 'pending') {
@@ -257,11 +265,15 @@ export interface MatchRouteOptions {
 
 export type UseMatchRouteOptions<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
-  TFrom extends RoutePaths<TRouteTree> = '/',
+  TFrom extends RoutePaths<TRouteTree> = RoutePaths<TRouteTree>,
   TTo extends string = '',
-  TMaskFrom extends RoutePaths<TRouteTree> = '/',
+  TMaskFrom extends RoutePaths<TRouteTree> = TFrom,
   TMaskTo extends string = '',
-> = ToOptions<TRouteTree, TFrom, TTo, TMaskFrom, TMaskTo> & MatchRouteOptions
+> = DeepOptional<
+  ToOptions<TRouteTree, TFrom, TTo, TMaskFrom, TMaskTo>,
+  'search' | 'params'
+> &
+  MatchRouteOptions
 
 export function useMatchRoute<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
@@ -271,9 +283,9 @@ export function useMatchRoute<
 
   return React.useCallback(
     <
-      TFrom extends RoutePaths<TRouteTree> = '/',
+      TFrom extends RoutePaths<TRouteTree> = RoutePaths<TRouteTree>,
       TTo extends string = '',
-      TMaskFrom extends RoutePaths<TRouteTree> = '/',
+      TMaskFrom extends RoutePaths<TRouteTree> = TFrom,
       TMaskTo extends string = '',
       TResolved extends string = ResolveRelativePath<TFrom, NoInfer<TTo>>,
     >(
@@ -339,14 +351,13 @@ export function getRenderedMatches(state: RouterState) {
 export function useMatch<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
   TFrom extends RouteIds<TRouteTree> = RouteIds<TRouteTree>,
-  TStrict extends boolean = true,
   TRouteMatchState = RouteMatch<TRouteTree, TFrom>,
   TSelected = TRouteMatchState,
 >(
   opts: StrictOrFrom<TFrom> & {
     select?: (match: TRouteMatchState) => TSelected
   },
-): TStrict extends true ? TSelected : TSelected | undefined {
+): TSelected {
   const router = useRouter()
   const nearestMatchId = React.useContext(matchContext)
 
@@ -424,7 +435,6 @@ export function useParentMatches<T = RouteMatch[]>(opts?: {
 export function useLoaderDeps<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
   TFrom extends RouteIds<TRouteTree> = RouteIds<TRouteTree>,
-  TStrict extends boolean = true,
   TRouteMatch extends RouteMatch<TRouteTree, TFrom> = RouteMatch<
     TRouteTree,
     TFrom
@@ -434,7 +444,7 @@ export function useLoaderDeps<
   opts: StrictOrFrom<TFrom> & {
     select?: (match: TRouteMatch) => TSelected
   },
-): TStrict extends true ? TSelected : TSelected | undefined {
+): TSelected {
   return useMatch({
     ...opts,
     select: (s) => {
@@ -442,13 +452,12 @@ export function useLoaderDeps<
         ? opts.select(s?.loaderDeps)
         : s?.loaderDeps
     },
-  })!
+  })
 }
 
 export function useLoaderData<
   TRouteTree extends AnyRoute = RegisteredRouter['routeTree'],
   TFrom extends RouteIds<TRouteTree> = RouteIds<TRouteTree>,
-  TStrict extends boolean = true,
   TRouteMatch extends RouteMatch<TRouteTree, TFrom> = RouteMatch<
     TRouteTree,
     TFrom
@@ -458,7 +467,7 @@ export function useLoaderData<
   opts: StrictOrFrom<TFrom> & {
     select?: (match: TRouteMatch) => TSelected
   },
-): TStrict extends true ? TSelected : TSelected | undefined {
+): TSelected {
   return useMatch({
     ...opts,
     select: (s) => {
@@ -466,5 +475,26 @@ export function useLoaderData<
         ? opts.select(s?.loaderData)
         : s?.loaderData
     },
-  })!
+  })
+}
+
+export function isServerSideError(error: unknown): error is {
+  __isServerError: true
+  data: Record<string, any>
+} {
+  if (!(typeof error === 'object' && error && 'data' in error)) return false
+  if (!('__isServerError' in error && error.__isServerError)) return false
+  if (!(typeof error.data === 'object' && error.data)) return false
+
+  return error.__isServerError === true
+}
+
+export function defaultDeserializeError(serializedData: Record<string, any>) {
+  if ('name' in serializedData && 'message' in serializedData) {
+    const error = new Error(serializedData.message)
+    error.name = serializedData.name
+    return error
+  }
+
+  return serializedData.data
 }

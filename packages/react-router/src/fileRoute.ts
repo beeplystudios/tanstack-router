@@ -78,9 +78,9 @@ export type FileRoutePath<
   TParentRoute extends AnyRoute,
   TFilePath extends string,
 > = ResolveFilePath<TParentRoute, TFilePath> extends `_${infer _}`
-  ? string
+  ? ''
   : ResolveFilePath<TParentRoute, TFilePath> extends `/_${infer _}`
-    ? string
+    ? ''
     : ResolveFilePath<TParentRoute, TFilePath>
 
 export class FileRoute<
