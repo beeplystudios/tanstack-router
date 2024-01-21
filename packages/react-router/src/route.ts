@@ -1037,6 +1037,7 @@ export type ErrorRouteProps = {
 }
 
 export type NotFoundRouteProps = {
+  // TODO: Make sure this is `| null | undefined` (this is for global not-founds)
   data: unknown
 }
 //

@@ -17,6 +17,7 @@ import {
   RouteMask,
   Route,
   LoaderFnContext,
+  rootRouteId,
 } from './route'
 import { FullSearchSchema, RoutesById, RoutesByPath } from './routeInfo'
 import { defaultParseSearch, defaultStringifySearch } from './searchParams'
@@ -59,7 +60,7 @@ import {
 import invariant from 'tiny-invariant'
 import { isRedirect } from './redirects'
 import { ToOptions } from './link'
-import { notFound, warning } from '.'
+import { DefaultGlobalNotFound, notFound, warning } from '.'
 // import warning from 'tiny-warning'
 
 //
@@ -1682,6 +1683,16 @@ export class Router<
         matches: matches as any,
       }
     })
+  }
+
+  getNotFoundComponent = () => {
+    console.log(this.routesById)
+    const rootNotFoundComponent = (this.routesById as any)[rootRouteId].options
+      .notFoundComponent
+
+    if (!rootNotFoundComponent) return DefaultGlobalNotFound
+
+    return rootNotFoundComponent
   }
 
   // resolveMatchPromise = (matchId: string, key: string, value: any) => {
