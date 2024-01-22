@@ -64,7 +64,7 @@ import {
 } from './path'
 import invariant from 'tiny-invariant'
 import { isRedirect } from './redirects'
-import { DefaultGlobalNotFound, warning } from '.'
+import { DefaultGlobalNotFound, NotFoundOptions, warning } from '.'
 import { ResolveRelativePath, ToOptions } from './link'
 import { NoInfer } from '@tanstack/react-store'
 // import warning from 'tiny-warning'
@@ -173,6 +173,7 @@ export interface BuildNextOptions {
 }
 
 export interface DehydratedRouterState {
+  currentGlobalNotFoundError?: NotFoundOptions
   dehydratedMatches: DehydratedRouteMatch[]
 }
 
@@ -243,6 +244,7 @@ export class Router<
   subscribers = new Set<RouterListener<RouterEvent>>()
   injectedHtml: InjectedHtmlEntry[] = []
   dehydratedData?: TDehydrated
+  currentGlobalNotFoundError?: NotFoundOptions
 
   // Must build in constructor
   __store!: Store<RouterState<TRouteTree>>
@@ -1698,6 +1700,7 @@ export class Router<
 
     return {
       state: {
+        currentGlobalNotFoundError: this.currentGlobalNotFoundError,
         dehydratedMatches: this.state.matches.map((d) => ({
           ...pick(d, ['id', 'status', 'updatedAt', 'loaderData']),
           // If an error occurs server-side during SSRing,
@@ -1730,6 +1733,8 @@ export class Router<
     this.options.hydrate?.(ctx.payload as any)
     const dehydratedState = ctx.router.state
 
+    this.currentGlobalNotFoundError = dehydratedState.currentGlobalNotFoundError
+
     let matches = this.matchRoutes(
       this.state.location.pathname,
       this.state.location.search,
@@ -1758,16 +1763,6 @@ export class Router<
         matches: matches as any,
       }
     })
-  }
-
-  getNotFoundComponent = () => {
-    console.log(this.routesById)
-    const rootNotFoundComponent = (this.routesById as any)[rootRouteId].options
-      .notFoundComponent
-
-    if (!rootNotFoundComponent) return DefaultGlobalNotFound
-
-    return rootNotFoundComponent
   }
 
   // resolveMatchPromise = (matchId: string, key: string, value: any) => {
