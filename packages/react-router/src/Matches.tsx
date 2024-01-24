@@ -205,11 +205,7 @@ function MatchInner({
     )
 
     // TODO: Support existing notFoundRoute?
-    return (
-      <route.options.notFoundComponent
-        data={router.currentGlobalNotFoundError ?? { global: true }}
-      />
-    )
+    return <route.options.notFoundComponent data={match.notFoundError} />
   }
 
   if (match.status === 'error') {
