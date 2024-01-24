@@ -11,6 +11,7 @@ import {
   ErrorRouteProps,
   NotFoundRoute,
   notFound,
+  useParams,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 
@@ -101,6 +102,30 @@ function DemoOne() {
   )
 }
 
+const blogRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/blog',
+  component: () => {
+    return <div>This is the blog page</div>
+  },
+})
+
+const blogPostRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/blog/$slug',
+  loader: ({ params }) => {
+    if (params.slug !== 'exists') {
+      throw notFound()
+    }
+  },
+  notFoundComponent: () => {
+    return <div>does not exist!</div>
+  },
+  component: () => {
+    return <div>This is a blog post</div>
+  },
+})
+
 const notFoundRoute = new NotFoundRoute({
   getParentRoute: () => rootRoute,
   component: GlobalNotFound,
@@ -114,7 +139,12 @@ function GlobalNotFound() {
   )
 }
 
-const routeTree = rootRoute.addChildren([indexRoute, demoRouteOne])
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  demoRouteOne,
+  blogRoute,
+  blogPostRoute,
+])
 
 // Set up a Router instance
 const router = new Router({
