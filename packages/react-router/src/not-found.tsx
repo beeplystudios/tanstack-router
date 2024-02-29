@@ -8,6 +8,7 @@ export type NotFoundError = {
   data?: any
   throw?: boolean
   routeId?: RouteIds<RegisteredRouter['routeTree']>
+  fromRouteId?: RouteIds<RegisteredRouter['routeTree']>
 }
 
 export function notFound(options: NotFoundError = {}) {

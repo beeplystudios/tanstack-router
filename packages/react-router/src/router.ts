@@ -1144,7 +1144,7 @@ export class Router<
         }
 
         if (isNotFound(err)) {
-          err.routeId = match.routeId
+          err.fromRouteId = match.routeId
           throw err
         }
 
@@ -1237,7 +1237,7 @@ export class Router<
             }
 
             if (isNotFound(err)) {
-              err.routeId = match.routeId
+              err.fromRouteId = match.routeId
               throw err
             }
           }
